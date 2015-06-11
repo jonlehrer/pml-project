@@ -1,0 +1,88 @@
+---
+title: "Prediction Movement Patterns of Barbell Lifts"
+author: "Jonathan Lehrer"
+date: "Wednesday, June 10, 2015"
+output: html_document
+---
+
+This project uses machine learning techniques to predict how a barbell lift was performed on the basis of measurements from accelerometers on the belt, forearm, arm, and dumbell of the person performing the barbell lift. The lifts were classified into one of 5 classes - the correct method, and 4 separate incorrect methods. These classes were labelled A-E.
+
+```{r}
+library(caret)
+#library(doParallel)
+#c1 <- makeCluster(detectCores())
+#registerDoParallel(c1)
+set.seed(1234)
+```
+
+We load data:
+
+```{r, echo=TRUE, cache=TRUE}
+training <- read.csv("pml-training.csv")
+testing2 <- read.csv("pml-testing.csv")
+```
+
+We remove variables which are largely blank or largely NA.
+Note that in practice for this dataset, variables with any blank or NA contain many blanks / NAs.
+
+```{r, cache=TRUE}
+trainingNA <- apply(training, 2, function(x) sum(is.na(x))) #has NA values
+trainingbl <- apply(training, 2, function(x) sum(x=="")) #has blank values
+Useful <- names(training)[trainingNA == 0 & trainingbl == 0] #variables with no blanks or NAs
+training2 <- training[ , Useful] #training2 only contains complete variables
+```
+
+We remove bookkeeping / indexing variables to prevent a machine-learning "short circuit":
+
+```{r, cache=TRUE}
+training3 <- subset(training2, select = -c(X, user_name, raw_timestamp_part_1,
+                                           raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+
+```
+
+We evaluate three different machine learning algorithms on the training data. specifically, we use a tree model, a boosting model, and a random forest model. Each is performed with all the caret package defaults. Due to the size of the training dataset, we perform the evaulation on a 10% subset of the data.
+
+Cross-validation was provided through the trainControl option specification "cv", with all other defaults, resulting in 10-fold cross-validation.
+
+
+```{r, cache=TRUE}
+inTrain <- createDataPartition(y=training3$classe, p=.1, list=F)
+trainingsm <- training3[inTrain,]
+ctrl <- trainControl(method="cv")
+
+```
+
+Results of the tree method:
+```{r, cache=TRUE}
+modFitrpart <- train(classe ~ ., method="rpart", data=trainingsm, trControl=ctrl)
+modFitrpart
+```
+
+Results of the boosting method:
+```{r, cache=TRUE}
+modFitgbm <- train(classe ~ ., method="gbm", data=trainingsm, verbose=F, trControl=ctrl)
+modFitgbm
+```
+
+Results of the random forest method:
+```{r, cache=TRUE}
+modFitrf <- train(classe ~ ., method="rf", data=trainingsm, trControl=ctrl)
+modFitrf
+```
+
+As can be seen above, the boosting and random forest approaches far outperform the random tree algorithm. Boosting and random forest produce similar accuracies. In our experience, the winner between these two depends on the randomization seed. 
+
+We perform random forest model-fit on the full training dataset:
+
+```{r, cache=TRUE}
+modFitrf_lg <- train(classe ~ ., method="rf", data=traininglg, trControl=ctrl)
+modFitrf_lg
+```
+
+Finally we predict the values of the 20 test cases
+```{r, cache=TRUE}
+predictions <- predict(modFitrf_lg, testing)
+predictions
+```
+
+We would expect the out-of-sample error rate to be greater than or equal to the the cross-validated in-sample error rate, but likely comparable as cross-validation provides an in-sample estimate of out-of-sample error.
